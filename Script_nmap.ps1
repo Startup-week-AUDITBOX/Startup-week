@@ -1,8 +1,8 @@
-# V1
+# V1.1
 # ========= ADMIN CHECK =========
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "Redémarrage en mode administrateur..."
+    Write-Host "🔐 Redémarrage en mode administrateur..."
     Start-Process powershell "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }
@@ -13,13 +13,11 @@ $ipRange = Read-Host "Entrez la plage d'adresses IP à scanner (ex: 192.168.1.0/
 # ========= DÉTECTION / INSTALLATION NMAP =========
 $nmapExe = $null
  
-# 1. Via Get-Command
 try {
     $cmd = Get-Command nmap -ErrorAction SilentlyContinue
     if ($cmd) { $nmapExe = $cmd.Source }
 } catch {}
  
-# 2. Recherche dans emplacements connus
 if (-not $nmapExe) {
     $paths = @(
         "C:\Program Files (x86)\Nmap\nmap.exe",
@@ -34,7 +32,6 @@ if (-not $nmapExe) {
     }
 }
  
-# 3. Installation si toujours non trouvé
 if (-not $nmapExe) {
     Write-Host "Nmap non trouvé. Installation via Chocolatey..."
  
@@ -48,7 +45,6 @@ if (-not $nmapExe) {
     choco install nmap -y --force
     Start-Sleep -Seconds 5
  
-    # Recherche après install
     $paths += Get-ChildItem "C:\Program Files*" -Recurse -Filter "nmap.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
     foreach ($p in $paths) {
         if (Test-Path $p) {
@@ -63,42 +59,63 @@ if (-not $nmapExe) {
     exit
 }
  
-# ========= CRÉATION DOSSIER RAPPORT =========
+# ========= DOSSIER DE RAPPORT =========
 $reportDir = Join-Path $HOME "Documents\RapportsNmap"
 New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
  
-# ========= SCAN HÔTES ACTIFS =========
-$liveFile = Join-Path $reportDir "live-hosts.txt"
-Write-Host "Détection des hôtes actifs dans $ipRange..."
+# ========= SCAN DES HÔTES ACTIFS =========
+$liveFile = Join-Path $reportDir "hosts-up.txt"
+Write-Host "`Détection des hôtes actifs dans $ipRange..."
 & $nmapExe -sn $ipRange -oG $liveFile
  
-# Extraction des IPs "Up"
+# ========= EXTRACTION DES IP's UP =========
 $targets = Select-String "Up" $liveFile | ForEach-Object {
     if ($_ -match "Host:\s+(\d{1,3}(\.\d{1,3}){3})") {
         $matches[1]
     }
 }
  
- 
 if (-not $targets) {
     Write-Host "Aucun hôte actif détecté dans la plage."
     exit
 }
  
-# ========= SCAN RAPIDE DE CHAQUE HÔTE =========
-foreach ($target in $targets) {
-    Write-Host "`n➡ Scan rapide de $target"
-    $dateStr = Get-Date -Format "yyyyMMdd-HHmmss"
-    $xmlFile = Join-Path $reportDir "scan-$($target.Replace(':','-'))-$dateStr.xml"
+# Enregistre les IP's UP dans un fichier TXT propre
+$upList = Join-Path $reportDir "ip-up-list.txt"
+$targets | Out-File -Encoding ascii $upList
  
+# ========= SCAN GLOBAL DE TOUS LES HÔTES UP =========
+$dateStr = Get-Date -Format "yyyyMMdd-HHmmss"
+$xmlFile = Join-Path $reportDir "nmap-result-$dateStr.xml"
+$htmlFile = Join-Path $reportDir "nmap-report-$dateStr.html"
+ 
+Write-Host "Scan rapide global en cours..."
+& $nmapExe -F -T4 -Pn -oX $xmlFile $targets
+ 
+# ========= CONVERSION XML VERS HTML =========
+$xslPath = Join-Path (Split-Path $nmapExe) "nmap.xsl"
+ 
+if ((Test-Path $xslPath) -and (Test-Path $xmlFile)) {
     try {
-& $nmapExe -F -T4 -Pn -oX $xmlFile $target
-        Write-Host "Résultat enregistré : $xmlFile"
+        $readerSettings = New-Object System.Xml.XmlReaderSettings
+        $readerSettings.DtdProcessing = "Parse"
+        $reader = [System.Xml.XmlReader]::Create($xmlFile, $readerSettings)
+ 
+        $writer = New-Object System.IO.StreamWriter($htmlFile)
+        $xslt = New-Object System.Xml.Xsl.XslCompiledTransform
+        $xslt.Load($xslPath)
+        $xslt.Transform($reader, $null, $writer)
+        $writer.Close()
+        $reader.Close()
+ 
+        Write-Host "Rapport HTML généré : $htmlFile"
+        Start-Process $htmlFile
     } catch {
-        Write-Warning "Échec du scan pour $target"
+        Write-Warning "Erreur lors de la conversion HTML : $($_.Exception.Message)"
     }
+} else {
+    Write-Warning "Impossible de générer le rapport HTML (XSL ou XML manquant)."
 }
  
-# ========= OUVERTURE DU DOSSIER =========
-Write-Host "Scan terminé. Tous les rapports sont enregistrés dans : $reportDir"
-Start-Process "explorer.exe" -ArgumentList "`"$reportDir`""
+# ========= FIN =========
+Write-Host "Tous les rapports sont disponibles dans : $reportDir"
