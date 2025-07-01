@@ -1,121 +1,90 @@
-# V1.1
-# ========= ADMIN CHECK =========
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-    [Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "🔐 Redémarrage en mode administrateur..."
-    Start-Process powershell "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+# V1.2
+# === CONFIGURATION ===
+$nmapPath = "C:\Program Files (x86)\Nmap\nmap.exe"
+$ipListFile = "$HOME\Documents\ip-up-list.txt"
+$outputDir = "$HOME\Documents\RapportsNmapVuln"
+$htmlDir = Join-Path $outputDir "HTML"
+
+# === VÉRIFICATION NMAP ===
+if (-not (Test-Path $nmapPath)) {
+    Write-Error "Nmap introuvable à : $nmapPath"
     exit
 }
- 
-# ========= DEMANDE PLAGE IP =========
-$ipRange = Read-Host "Entrez la plage d'adresses IP à scanner (ex: 192.168.1.0/24)"
- 
-# ========= DÉTECTION / INSTALLATION NMAP =========
-$nmapExe = $null
- 
-try {
-    $cmd = Get-Command nmap -ErrorAction SilentlyContinue
-    if ($cmd) { $nmapExe = $cmd.Source }
-} catch {}
- 
-if (-not $nmapExe) {
-    $paths = @(
-        "C:\Program Files (x86)\Nmap\nmap.exe",
-        "C:\Program Files\Nmap\nmap.exe",
-        "C:\ProgramData\chocolatey\lib\nmap\tools\nmap.exe"
-    )
-    foreach ($p in $paths) {
-        if (Test-Path $p) {
-            $nmapExe = $p
-            break
-        }
-    }
-}
- 
-if (-not $nmapExe) {
-    Write-Host "Nmap non trouvé. Installation via Chocolatey..."
- 
-    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-        Write-Host "🛠 Installation de Chocolatey..."
-        Set-ExecutionPolicy Bypass -Scope Process -Force
-        [System.Net.ServicePointManager]::SecurityProtocol = 3072
-        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-    }
- 
-    choco install nmap -y --force
-    Start-Sleep -Seconds 5
- 
-    $paths += Get-ChildItem "C:\Program Files*" -Recurse -Filter "nmap.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
-    foreach ($p in $paths) {
-        if (Test-Path $p) {
-            $nmapExe = $p
-            break
-        }
-    }
-}
- 
-if (-not $nmapExe) {
-    Write-Error "Nmap introuvable même après installation. Abandon."
-    exit
-}
- 
-# ========= DOSSIER DE RAPPORT =========
-$reportDir = Join-Path $HOME "Documents\RapportsNmap"
-New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
- 
-# ========= SCAN DES HÔTES ACTIFS =========
-$liveFile = Join-Path $reportDir "hosts-up.txt"
-Write-Host "`Détection des hôtes actifs dans $ipRange..."
-& $nmapExe -sn $ipRange -oG $liveFile
- 
-# ========= EXTRACTION DES IP's UP =========
-$targets = Select-String "Up" $liveFile | ForEach-Object {
+
+# === DEMANDE PLAGE IP ===
+$ipRange = Read-Host "Entrez la plage IP à scanner (ex : 192.168.1.0/24)"
+
+# === SCAN DE PRÉSENCE ===
+Write-Host "Scan de présence..."
+$liveFile = "$env:TEMP\nmap-presence.gnmap"
+& $nmapPath -sn $ipRange -oG $liveFile
+
+# === EXTRACTION IPs ACTIVES ===
+$ipsUp = Select-String "Up" $liveFile | ForEach-Object {
     if ($_ -match "Host:\s+(\d{1,3}(\.\d{1,3}){3})") {
         $matches[1]
     }
 }
- 
-if (-not $targets) {
-    Write-Host "Aucun hôte actif détecté dans la plage."
+
+if (-not $ipsUp) {
+    Write-Error "Aucune IP active détectée."
     exit
 }
- 
-# Enregistre les IP's UP dans un fichier TXT propre
-$upList = Join-Path $reportDir "ip-up-list.txt"
-$targets | Out-File -Encoding ascii $upList
- 
-# ========= SCAN GLOBAL DE TOUS LES HÔTES UP =========
-$dateStr = Get-Date -Format "yyyyMMdd-HHmmss"
-$xmlFile = Join-Path $reportDir "nmap-result-$dateStr.xml"
-$htmlFile = Join-Path $reportDir "nmap-report-$dateStr.html"
- 
-Write-Host "Scan rapide global en cours..."
-& $nmapExe -F -T4 -Pn -oX $xmlFile $targets
- 
-# ========= CONVERSION XML VERS HTML =========
-$xslPath = Join-Path (Split-Path $nmapExe) "nmap.xsl"
- 
-if ((Test-Path $xslPath) -and (Test-Path $xmlFile)) {
+
+$ipsUp | Set-Content $ipListFile
+Write-Host "$($ipsUp.Count) IPs actives enregistrées dans $ipListFile"
+
+# === CRÉATION DES DOSSIERS ===
+New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+New-Item -ItemType Directory -Path $htmlDir -Force | Out-Null
+
+# === SCAN COMPLET POUR CHAQUE IP ===
+foreach ($ip in $ipsUp) {
+    $ip = $ip.Trim()
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $outFileTxt = Join-Path $outputDir "scan-$ip-$timestamp.txt"
+    $outFileHtml = Join-Path $htmlDir "rapport-$ip-$timestamp.html"
+
+    Write-Host "Scan de ports, OS et vulnérabilités pour $ip..."
+    & $nmapPath -A -sV --script vuln -T4 -oN $outFileTxt $ip
+
     try {
-        $readerSettings = New-Object System.Xml.XmlReaderSettings
-        $readerSettings.DtdProcessing = "Parse"
-        $reader = [System.Xml.XmlReader]::Create($xmlFile, $readerSettings)
- 
-        $writer = New-Object System.IO.StreamWriter($htmlFile)
-        $xslt = New-Object System.Xml.Xsl.XslCompiledTransform
-        $xslt.Load($xslPath)
-        $xslt.Transform($reader, $null, $writer)
-        $writer.Close()
-        $reader.Close()
- 
-        Write-Host "Rapport HTML généré : $htmlFile"
-        Start-Process $htmlFile
+        $txt = Get-Content $outFileTxt -Raw
+        $openPorts = ($txt -split "\n") | Where-Object { $_ -match "^\d+/tcp\s+open" } | Out-String
+        $vulns = ($txt -split "\n") | Where-Object { $_ -match "VULNERABLE|CVE" } | Out-String
+
+        $htmlContent = @"
+<!DOCTYPE html>
+<html lang='fr'>
+<head>
+<meta charset='UTF-8'>
+<title>Rapport Nmap $ip</title>
+<style>
+body { font-family: Arial, sans-serif; background-color: #f9f9f9; color: #333; padding: 20px; }
+h1 { color: #0066cc; }
+h2 { color: #003366; }
+pre { background: #fff; padding: 15px; border: 1px solid #ccc; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+</style>
+</head>
+<body>
+<h1>Rapport de scan pour $ip</h1>
+<h2>Ports ouverts et services :</h2>
+<pre>$openPorts</pre>
+<h2>Vulnérabilités détectées :</h2>
+<pre>$vulns</pre>
+<h2>Rapport complet brut :</h2>
+<pre>$txt</pre>
+</body>
+</html>
+"@
+        Set-Content -Path $outFileHtml -Value $htmlContent -Encoding UTF8
+        Write-Host "Rapport client lisible : $outFileHtml"
     } catch {
-        Write-Warning "Erreur lors de la conversion HTML : $($_.Exception.Message)"
+        Write-Warning "Échec génération HTML pour $ip"
     }
-} else {
-    Write-Warning "Impossible de générer le rapport HTML (XSL ou XML manquant)."
+
+    Write-Host "Scan terminé pour $ip"
 }
- 
-# ========= FIN =========
-Write-Host "Tous les rapports sont disponibles dans : $reportDir"
+
+Write-Host "Tous les rapports sont disponibles dans : $outputDir"
+Write-Host "HTML lisibles dans : $htmlDir"
