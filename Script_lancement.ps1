@@ -1,4 +1,4 @@
-# V1
+# V1.1
 # Script_lancement.ps1
 
 # Vérifier si on est en mode admin
