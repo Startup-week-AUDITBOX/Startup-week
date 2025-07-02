@@ -1,4 +1,4 @@
-# V1
+# V1.1
 # URL et chemins
 $pingCastleUrl = "https://github.com/netwrix/pingcastle/releases/download/3.3.0.1/PingCastle_3.3.0.1.zip"
 $downloadPath = "C:\Users\Administrator\Downloads\PingCastle_3.3.0.1.zip"
