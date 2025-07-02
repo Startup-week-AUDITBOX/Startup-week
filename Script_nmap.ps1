@@ -1,37 +1,32 @@
-# V1.3
-# Script_nmap.ps1 – Installation de Nmap via Chocolatey + scan automatique
+# V1.4
+# Script_nmap.ps1 – Scan Nmap consolidé sans rapport brut dans le HTML
 
 # === CONFIGURATION ===
 $nmapExe = $null
+$dataCsvPath = "$PSScriptRoot\data\data_client.csv"
 $ipListFile = "$HOME\Documents\ip-up-list.txt"
 $outputDir = "$HOME\Documents\RapportsNmapVuln"
-$htmlDir = Join-Path $outputDir "HTML"
+$htmlReportPath = Join-Path $outputDir "rapport-global.html"
+$liveFile = "$env:TEMP\nmap-presence.gnmap"
 
 # === VÉRIFICATION DE NMAP ===
-Write-Host "Vérification de Nmap..."
-
-# Chercher nmap dans le PATH
+Write-Host "`n🔍 Vérification de Nmap..."
 $nmapExe = Get-Command nmap.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue
 
-# === INSTALLATION VIA CHOCOLATEY SI ABSENT ===
 if (-not $nmapExe) {
-    Write-Host "Nmap non trouvé. Installation via Chocolatey..."
+    Write-Host "❌ Nmap non trouvé. Installation via Chocolatey..."
 
-    # Vérifier si choco est dispo
     if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-        Write-Host "🛠 Chocolatey non trouvé. Installation de Chocolatey..."
+        Write-Host "🛠 Installation de Chocolatey..."
         Set-ExecutionPolicy Bypass -Scope Process -Force
         [System.Net.ServicePointManager]::SecurityProtocol = 3072
         iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
     }
 
-    # Installer nmap
-    Write-Host "Installation de Nmap via Chocolatey..."
+    Write-Host "📦 Installation de Nmap..."
     choco install nmap -y --force
     Start-Sleep -Seconds 5
 
-    # Rechercher nmap.exe sur le disque
-    Write-Host "Recherche de nmap.exe après installation..."
     $paths = Get-ChildItem "C:\Program Files*" -Recurse -Filter "nmap.exe" -ErrorAction SilentlyContinue |
              Select-Object -ExpandProperty FullName
 
@@ -43,23 +38,47 @@ if (-not $nmapExe) {
     }
 }
 
-# === ÉCHEC DÉFINITIF SI TOUJOURS INTROUVABLE ===
 if (-not $nmapExe -or -not (Test-Path $nmapExe)) {
-    Write-Error "Nmap introuvable même après installation. Abandon."
+    Write-Error "❌ Nmap introuvable. Abandon."
+    exit
+}
+Write-Host "✅ Nmap trouvé à : $nmapExe"
+
+# === LECTURE CSV ===
+if (-not (Test-Path $dataCsvPath)) {
+    Write-Error "❌ Fichier CSV introuvable à $dataCsvPath"
     exit
 }
 
-Write-Host "Nmap trouvé à : $nmapExe"
+Write-Host "`n📄 Lecture des plages IP depuis le CSV..."
+$csv = Import-Csv -Path $dataCsvPath -Delimiter ','
 
-# === DEMANDER LA PLAGE IP ===
-$ipRange = Read-Host "Entrez la plage IP à scanner (ex : 192.168.1.0/24)"
+$plagesIP = @()
+foreach ($entry in $csv) {
+    if ($entry."Plages IP") {
+        $entry."Plages IP" -split ';' | ForEach-Object {
+            $_.Trim('"') -replace '"$','' | ForEach-Object { $plagesIP += $_ }
+        }
+    }
+}
+
+if (-not $plagesIP) {
+    Write-Error "❌ Aucune plage IP valide trouvée dans le CSV."
+    exit
+}
+
+Write-Host "`n✅ Plages IP extraites :"
+$plagesIP | ForEach-Object { Write-Host " - $_" }
 
 # === SCAN DE PRÉSENCE ===
-Write-Host "Scan de présence..."
-$liveFile = "$env:TEMP\nmap-presence.gnmap"
-& $nmapExe -sn $ipRange -oG $liveFile
+if (Test-Path $liveFile) { Remove-Item $liveFile -Force }
+Write-Host "`n🔎 Scan de présence..."
 
-# === EXTRACTION IPs ACTIVES ===
+foreach ($range in $plagesIP) {
+    Write-Host " 🔄 Scan de $range ..."
+    & $nmapExe -sn $range -oG $liveFile -append
+}
+
 $ipsUp = Select-String "Up" $liveFile | ForEach-Object {
     if ($_ -match "Host:\s+(\d{1,3}(\.\d{1,3}){3})") {
         $matches[1]
@@ -67,25 +86,42 @@ $ipsUp = Select-String "Up" $liveFile | ForEach-Object {
 }
 
 if (-not $ipsUp) {
-    Write-Error "Aucune IP active détectée."
+    Write-Error "❌ Aucune IP active détectée."
     exit
 }
-
 $ipsUp | Set-Content $ipListFile
-Write-Host "$($ipsUp.Count) IPs actives enregistrées dans : $ipListFile"
+Write-Host "`n✅ IPs actives : $($ipsUp.Count) enregistrées dans : $ipListFile"
 
-# === CRÉATION DES DOSSIERS ===
+# === DOSSIER DE SORTIE ===
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-New-Item -ItemType Directory -Path $htmlDir -Force | Out-Null
 
-# === SCAN AVANCÉ POUR CHAQUE IP ===
+# === INITIALISATION DU HTML FINAL ===
+$htmlHeader = @"
+<!DOCTYPE html>
+<html lang='fr'>
+<head>
+<meta charset='UTF-8'>
+<title>Rapport Nmap Global</title>
+<style>
+body { font-family: Arial, sans-serif; background-color: #f9f9f9; color: #333; padding: 20px; }
+h1 { color: #0066cc; }
+h2 { color: #003366; }
+pre { background: #fff; padding: 15px; border: 1px solid #ccc; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+hr { margin: 30px 0; }
+</style>
+</head>
+<body>
+<h1>Rapport Nmap – Résultats consolidés</h1>
+<p>Scan réalisé le $(Get-Date -Format "dd/MM/yyyy HH:mm")</p>
+"@
+
+$htmlBody = ""
+
+# === SCAN PAR IP AVEC CONTENU HTML RÉDUIT ===
 foreach ($ip in $ipsUp) {
     $ip = $ip.Trim()
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outFileTxt = Join-Path $outputDir "scan-$ip-$timestamp.txt"
-    $outFileHtml = Join-Path $htmlDir "rapport-$ip-$timestamp.html"
-
-    Write-Host "`n🛠 Scan de ports, OS et vulnérabilités pour $ip..."
+    Write-Host "`n🛠 Scan avancé pour $ip..."
+    $outFileTxt = Join-Path $outputDir "scan-$ip.txt"
     & $nmapExe -A -sV --script vuln -T4 -oN $outFileTxt $ip
 
     try {
@@ -93,40 +129,27 @@ foreach ($ip in $ipsUp) {
         $openPorts = ($txt -split "`n") | Where-Object { $_ -match "^\d+/tcp\s+open" } | Out-String
         $vulns = ($txt -split "`n") | Where-Object { $_ -match "VULNERABLE|CVE" } | Out-String
 
-        $htmlContent = @"
-<!DOCTYPE html>
-<html lang='fr'>
-<head>
-<meta charset='UTF-8'>
-<title>Rapport Nmap $ip</title>
-<style>
-body { font-family: Arial, sans-serif; background-color: #f9f9f9; color: #333; padding: 20px; }
-h1 { color: #0066cc; }
-h2 { color: #003366; }
-pre { background: #fff; padding: 15px; border: 1px solid #ccc; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
-</style>
-</head>
-<body>
-<h1>Rapport de scan pour $ip</h1>
-<h2>Ports ouverts et services :</h2>
+        $htmlBody += @"
+<hr>
+<h2>Résultats pour $ip</h2>
+<h3>Ports ouverts et services :</h3>
 <pre>$openPorts</pre>
-<h2>Vulnérabilités détectées :</h2>
+<h3>Vulnérabilités détectées :</h3>
 <pre>$vulns</pre>
-<h2>Rapport complet brut :</h2>
-<pre>$txt</pre>
+"@
+    }
+    catch {
+        Write-Warning "⚠️ Erreur lors du traitement de $ip"
+    }
+
+    Write-Host "✔️ Scan terminé pour $ip"
+}
+
+$htmlFooter = @"
 </body>
 </html>
 "@
+$htmlFull = $htmlHeader + $htmlBody + $htmlFooter
+Set-Content -Path $htmlReportPath -Value $htmlFull -Encoding UTF8
 
-        Set-Content -Path $outFileHtml -Value $htmlContent -Encoding UTF8
-        Write-Host "📄 Rapport HTML généré : $outFileHtml"
-    }
-    catch {
-        Write-Warning "⚠Erreur lors de la génération HTML pour $ip"
-    }
-
-    Write-Host "✔Scan terminé pour $ip"
-}
-
-Write-Host "Tous les rapports sont dans : $outputDir"
-Write-Host "HTML lisibles dans : $htmlDir"
+Write-Host "`n📄 Rapport HTML généré (sans rapport brut) : $htmlReportPath"
