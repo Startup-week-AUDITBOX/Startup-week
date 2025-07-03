@@ -1,41 +1,39 @@
-# V1.1
-# Script_lancement.ps1
+# V1.2
+# Script_lancement.ps1 — Version finale avec popup de fin
 
-# Vérifier si on est en mode admin
-$currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
-$admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-if (-not $admin) {
-    Write-Host "Redémarrage du script en mode administrateur..."
-    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
-    exit
-}
-
-# À partir d'ici, on est bien en mode administrateur
-Write-Host "Script lancé en mode administrateur."
+# Se positionner dans le dossier du script
 Set-Location -Path $PSScriptRoot
+Write-Host "📁 Répertoire d'exécution : $PSScriptRoot"
 
-# Débloquer les scripts
-Unblock-File "$PSScriptRoot\Script_pingcastle.ps1"
-Unblock-File "$PSScriptRoot\Script_nmap.ps1"
+# Débloquer les scripts si besoin
+Unblock-File "$PSScriptRoot\data\Script_pingcastle.ps1"
+Unblock-File "$PSScriptRoot\data\Script_nmap.ps1"
 
-# Lancer PingCastle
+# === Lancer PingCastle ===
 Write-Host "`n--- Lancement de Script_pingcastle.ps1 ---`n"
 try {
-    & "$PSScriptRoot\Script_pingcastle.ps1"
-    Write-Host "Script PingCastle terminé.`n"
+    & "$PSScriptRoot\data\Script_pingcastle.ps1"
+    Write-Host "`n✅ Script PingCastle terminé.`n"
 }
 catch {
-    Write-Host "Erreur dans Script_pingcastle.ps1 : $_`n"
+    Write-Host "`n❌ Erreur dans Script_pingcastle.ps1 : $_`n"
 }
 
-# Lancer Nmap
+# === Lancer Nmap ===
 Write-Host "`n--- Lancement de Script_nmap.ps1 ---`n"
 try {
-    & "$PSScriptRoot\Script_nmap.ps1"
-    Write-Host "Script Nmap terminé."
+    & "$PSScriptRoot\data\Script_nmap.ps1"
+    Write-Host "`n✅ Script Nmap terminé.`n"
 }
 catch {
-    Write-Host "Erreur dans Script_nmap.ps1 : $_"
+    Write-Host "`n❌ Erreur dans Script_nmap.ps1 : $_`n"
 }
+
+# === Afficher une popup de confirmation ===
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.MessageBox]::Show(
+    "Les rapports sont disponibles dans votre dossiers Documents.",
+    "Rapports générés",
+    [System.Windows.Forms.MessageBoxButtons]::OK,
+    [System.Windows.Forms.MessageBoxIcon]::Information
+)
