@@ -1,9 +1,9 @@
-# V1.4
+# V1.5
 # Script_nmap.ps1 – Scan Nmap consolidé sans rapport brut dans le HTML
 
 # === CONFIGURATION ===
 $nmapExe = $null
-$dataCsvPath = "$PSScriptRoot\data\data_client.csv"
+$dataCsvPath = "$PSScriptRoot\data_client.csv"
 $ipListFile = "$HOME\Documents\ip-up-list.txt"
 $outputDir = "$HOME\Documents\RapportsNmapVuln"
 $htmlReportPath = Join-Path $outputDir "rapport-global.html"
@@ -149,6 +149,7 @@ $htmlFooter = @"
 </body>
 </html>
 "@
+
 $htmlFull = $htmlHeader + $htmlBody + $htmlFooter
 Set-Content -Path $htmlReportPath -Value $htmlFull -Encoding UTF8
 
