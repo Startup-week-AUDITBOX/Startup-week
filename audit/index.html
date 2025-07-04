@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lancer un audit – AuditBox</title>
+    <link rel="stylesheet" href="../css/style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="container">
+        <img src="../img/logo.png" alt="AuditBox" class="logo" />
+        <nav>
+          <ul>
+            <li><a href="../">Accueil</a></li>
+            <li><a href="#" class="active">Lancer un audit</a></li>
+            <li><a href="../about/">À propos</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main class="audit-form">
+      <h1>Configurez votre audit</h1>
+      <p class="subtitle">
+        Remplissez les informations ci-dessous pour générer votre kit d'audit
+        personnalisé.
+      </p>
+
+      <form method="POST" action="../php/send-client-data.php">
+        <fieldset>
+          <p class="alert-assistance">
+            ⚠️ Si vous avez besoin d’assistance pour remplir ce formulaire,
+            veuillez appeler ce numéro : <strong>04 58 10 55 79</strong>
+          </p>
+          <legend>Informations de l'audit</legend>
+          <p class="note">
+            Toutes les informations restent confidentielles et ne sont pas
+            stockées.
+          </p>
+
+          <label for="company">Nom de l'entreprise *</label>
+          <input type="text" name="company" id="company" required />
+
+          <label for="firstName">Prénom *</label>
+          <input type="text" name="firstName" id="firstName" required />
+
+          <label for="lastName">Nom *</label>
+          <input type="text" name="lastName" id="lastName" required />
+
+          <label for="email">Email *</label>
+          <input type="email" name="email" id="email" required />
+          <div class="form-group">
+            <label for="phone">Numéro de téléphone *</label>
+            <input
+              type="tel"
+              id="phone"
+              name="phone"
+              required
+              pattern="^[+0-9.]{7,20}$"
+              title="Seuls les chiffres, les points et le signe + sont autorisés (ex: +33.6.06.06.06.06)"
+              placeholder="+33.6.06.06.06.06"
+            />
+          </div>
+          <label
+            >Plages d'adresses IP au format CIDR (format obligatoire:
+            x.x.x.x/xx)</label
+          >
+          <div id="ipContainer">
+            <input
+              type="text"
+              name="ipRanges[]"
+              required
+              pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+              title="Format requis : x.x.x.x/xx (ex: 192.168.1.0/24)"
+              placeholder="192.168.1.0/24"
+            />
+          </div>
+          <button
+            type="button"
+            class="btn secondary small"
+            onclick="addIpField()"
+          >
+            Ajouter une plage IP
+          </button>
+          <button
+            type="button"
+            class="btn secondary small"
+            onclick="removeLastIpField()"
+          >
+            Supprimer la dernière plage IP
+          </button>
+
+          <button type="submit" class="btn primary">
+            Générer et télécharger l'audit
+          </button>
+        </fieldset>
+      </form>
+    </main>
+
+    <footer>
+      <div class="footer-container">
+        <div class="footer-logo">AuditBox</div>
+        <p>
+          Un audit de sécurité, réseau et infrastructure en 5 minutes, pas à 5
+          chiffres. Solution automatisée pour une sécurité accessible à tous.
+        </p>
+        <nav>
+          <ul>
+            <li><a href="../">Accueil</a></li>
+            <li><a href="#">Lancer un audit</a></li>
+            <li><a href="../about/">À propos</a></li>
+            <li><a href="../mentions-legales/">Mentions légales</a></li>
+          </ul>
+        </nav>
+        <p class="legal">
+          © 2025 AuditBox. Tous droits réservés.<br /><small
+            >*: Indication basée sur des performances hautes. Donnée non
+            contractuelle.</small
+          >
+        </p>
+      </div>
+    </footer>
+
+    <script src="../js/scripts.js"></script>
+  </body>
+</html>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paiement - AuditBox</title>
+    <link rel="stylesheet" href="../../css/style.css" />
+  </head>
+  <body>
+    <main class="payment-container">
+      <!-- BLOC PRIX PROMO -->
+      <div class="price-promo">
+        <span class="old-price">500&nbsp;€</span>
+        <span class="promo-price">249&nbsp;€</span>
+      </div>
+
+      <!-- AIDE EN CAS DE PROBLÈME -->
+      <p class="alert-assistance">
+        ⚠️ Si vous avez besoin d’assistance pour remplir ce formulaire, veuillez
+        appeler ce numéro :
+        <strong>04 58 10 55 79</strong>
+      </p>
+
+      <!-- FORMULAIRE DE PAIEMENT -->
+      <form
+        action="../../php/fake-payment.php"
+        method="POST"
+        class="payment-form"
+      >
+        <label>Nom sur la carte</label>
+        <input type="text" name="card_name" required />
+
+        <label>Numéro de carte</label>
+        <input type="text" name="card_number" required />
+
+        <label>Date d’expiration</label>
+        <input type="text" name="exp" placeholder="MM/YY" required />
+
+        <label>Cryptogramme</label>
+        <input type="text" name="cvv" required />
+
+        <button type="submit" class="btn primary">Valider le paiement</button>
+      </form>
+    </main>
+  </body>
+</html>
